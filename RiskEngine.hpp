@@ -2,83 +2,94 @@
 #include <string>
 #include <vector>
 #include <algorithm>
-#include <cctype>
+#include <iostream>
 
-struct ScanInput {
+struct OpportunityPayload {
+    std::string url;
+    std::string description;
     int domainAgeDays;
     bool hasSSL;
-    bool paymentReceived;
+    bool paymentRequested;
     int scamReportCount;
-    int totalReviews;
-    bool adminVerified;
-    std::string descriptionText;
+    int totalReviewCount;
+};
+
+struct RiskAssessment {
+    int riskScore;           // 0 (safe) to 100 (high risk scam)
+    std::string status;      // VERIFIED, MIXED, or HIGH_RISK
+    std::vector<std::string> flags;
 };
 
 class RiskEngine {
 public:
-    static int calculateRiskScore(const ScanInput& input) {
-        double score = 0.0;
+    static RiskAssessment evaluate(const OpportunityPayload& data) {
+        int score = 0;
+        std::vector<std::string> detectedFlags;
 
-        // 1. User Reviews & Community Reports (40% Weight)
-        if (input.totalReviews > 0) {
-            double scamRatio = static_cast<double>(input.scamReportCount) / input.totalReviews;
-            score += (scamRatio * 40.0);
+        // Rule 1: SSL Check
+        if (!data.hasSSL) {
+            score += 25;
+            detectedFlags.push_back("Missing SSL certificate (HTTP instead of HTTPS).");
         }
 
-        // 2. Domain Age (20% Weight)
-        if (input.domainAgeDays < 14) {
-            score += 20.0; // Brand new domain
-        } else if (input.domainAgeDays < 90) {
-            score += 10.0; // Moderately new domain
+        // Rule 2: Domain Age Heuristic
+        if (data.domainAgeDays < 30) {
+            score += 35;
+            detectedFlags.push_back("Domain created less than 30 days ago.");
+        } else if (data.domainAgeDays < 90) {
+            score += 15;
+            detectedFlags.push_back("Relatively new domain (under 3 months old).");
         }
 
-        // 3. Payment History Verification (20% Weight)
-        if (!input.paymentReceived) {
-            score += 20.0; // Non-payment reported
-        }
-
-        // 4. Keyword Heuristics Detection (10% Weight)
-        int keywordCount = checkKeywords(input.descriptionText);
-        if (keywordCount >= 3) {
-            score += 10.0;
-        } else if (keywordCount > 0) {
-            score += 5.0;
-        }
-
-        // 5. SSL & Security Checks (10% Weight)
-        if (!input.hasSSL) {
-            score += 10.0;
-        }
-
-        int finalScore = static_cast<int>(score);
-        return std::min(finalScore, 100);
-    }
-
-    static std::string getClassification(int riskScore) {
-        if (riskScore <= 30) return "VERIFIED";
-        if (riskScore <= 60) return "MIXED";
-        return "SCAM";
-    }
-
-private:
-    static int checkKeywords(std::string text) {
-        std::transform(text.begin(), text.end(), text.begin(), ::tolower);
-        std::vector<std::string> redFlags = {
-            "guaranteed income",
-            "double your money",
-            "registration fee required",
-            "no skills needed",
-            "earn 10,000 per day",
-            "invest and relax",
-            "login-verify"
-        };
-
-        int matches = 0;
-        for (const auto& kw : redFlags) {
-            if (text.find(kw) != std::string::npos) {
-                matches++;
+        // Rule 3: Suspicious TLD Check
+        std::vector<std::string> suspiciousTLDs = {".xyz", ".top", ".tk", ".ml", ".ga", ".cf", ".gq", ".zip"};
+        for (const auto& tld : suspiciousTLDs) {
+            if (data.url.length() >= tld.length() && 
+                data.url.compare(data.url.length() - tld.length(), tld.length(), tld) == 0) {
+                score += 20;
+                detectedFlags.push_back("Uses high-risk top-level domain extension (" + tld + ").");
+                break;
             }
         }
-        return matches;
+
+        // Rule 4: High-Risk Keyword Heuristics
+        std::string lowerDesc = data.description;
+        std::transform(lowerDesc.begin(), lowerDesc.end(), lowerDesc.begin(), ::tolower);
+
+        std::vector<std::string> scamKeywords = {
+            "guaranteed return", "registration fee", "no experience needed", 
+            "earn $", "crypto investment", "wire transfer", "gift card"
+        };
+
+        for (const auto& kw : scamKeywords) {
+            if (lowerDesc.find(kw) != std::string::npos) {
+                score += 15;
+                detectedFlags.push_back("Contains suspicious phrase: '" + kw + "'");
+            }
+        }
+
+        // Rule 5: User Reports Ratio
+        if (data.totalReviewCount > 0) {
+            double reportRatio = static_cast<double>(data.scamReportCount) / data.totalReviewCount;
+            if (reportRatio > 0.5) {
+                score += 30;
+                detectedFlags.push_back("Over 50% of user reviews flag this as a scam.");
+            }
+        }
+
+        // Cap score at 100 max
+        if (score > 100) score = 100;
+
+        // Classify Status
+        std::string classification;
+        if (score < 30) {
+            classification = "VERIFIED";
+        } else if (score < 65) {
+            classification = "MIXED";
+        } else {
+            classification = "HIGH_RISK";
+        }
+
+        return { score, classification, detectedFlags };
     }
 };

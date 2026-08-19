@@ -53,6 +53,12 @@
                         <div id="scoreBadge" class="score-badge my-3">0%</div>
                         <h3 id="statusText" class="fw-bold"></h3>
                         <p id="scannedUrlText" class="text-break text-muted"></p>
+
+                        <!-- Detected Flags Section -->
+                        <div id="flagsContainer" class="mt-4 text-start d-none">
+                            <h6 class="fw-bold text-danger">🚩 Detected Risk Signals:</h6>
+                            <ul id="flagsList" class="list-group list-group-flush"></ul>
+                        </div>
                     </div>
 
                 </div>
@@ -67,7 +73,7 @@
             const url = document.getElementById('urlInput').value;
             const description = document.getElementById('descInput').value;
 
-            // Mock payload structure matching backend
+            // Payload matching backend expectations
             const payload = {
                 url: url,
                 description: description,
@@ -93,12 +99,14 @@
                 const scoreBadge = document.getElementById('scoreBadge');
                 const statusText = document.getElementById('statusText');
                 const scannedUrlText = document.getElementById('scannedUrlText');
+                const flagsContainer = document.getElementById('flagsContainer');
+                const flagsList = document.getElementById('flagsList');
 
                 resultArea.classList.remove('d-none');
                 scoreBadge.textContent = data.risk_score + '%';
                 scannedUrlText.textContent = data.url;
 
-                // Color code result
+                // Color code result status
                 scoreBadge.className = 'score-badge my-3 ';
                 if (data.status === 'VERIFIED') {
                     scoreBadge.classList.add('bg-verified');
@@ -114,6 +122,20 @@
                     statusText.className = 'fw-bold text-danger';
                 }
 
+                // Render Risk Flags
+                flagsList.innerHTML = '';
+                if (data.flags && data.flags.length > 0) {
+                    flagsContainer.classList.remove('d-none');
+                    data.flags.forEach(flag => {
+                        const li = document.createElement('li');
+                        li.className = 'list-group-item list-group-item-warning small fw-semibold';
+                        li.textContent = '• ' + flag;
+                        flagsList.appendChild(li);
+                    });
+                } else {
+                    flagsContainer.classList.add('d-none');
+                }
+
             } catch (err) {
                 alert('Backend C++ Server offline. Make sure your Crow server is running on port 18080!');
             }
@@ -121,3 +143,4 @@
     </script>
 </body>
 </html>
+
